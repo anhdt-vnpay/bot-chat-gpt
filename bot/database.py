@@ -20,6 +20,7 @@ class Database:
             return True
         else:
             if raise_exception:
+                print("user not exist")
                 raise ValueError(f"User {user_id} does not exist")
             else:
                 return False
@@ -82,6 +83,7 @@ class Database:
         user_dict = self.user_collection.find_one({"_id": user_id})
 
         if key not in user_dict:
+            print("User does not have a value for" + key)
             raise ValueError(f"User {user_id} does not have a value for {key}")
 
         return user_dict[key]
@@ -96,7 +98,9 @@ class Database:
         if dialog_id is None:
             dialog_id = self.get_user_attribute(user_id, "current_dialog_id")
 
-        dialog_dict = self.dialog_collection.find_one({"_id": dialog_id, "user_id": user_id})               
+        dialog_dict = self.dialog_collection.find_one({"_id": dialog_id, "user_id": user_id})    
+        if dialog_dict == None:
+            return []           
         return dialog_dict["messages"]
 
     def set_dialog_messages(self, user_id: int, dialog_messages: list, dialog_id: Optional[str] = None):

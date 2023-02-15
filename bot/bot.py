@@ -32,6 +32,7 @@ HELP_MESSAGE = """Commands:
 ⚪ /mode – Select chat mode
 ⚪ /balance – Show balance
 ⚪ /help – Show help
+⚪ /ask – Ask a question
 """
 
 async def register_user_if_not_exists(update: Update, context: CallbackContext, user: User):
@@ -44,10 +45,21 @@ async def register_user_if_not_exists(update: Update, context: CallbackContext, 
             last_name= user.last_name
         )
 
+async def register_user_immediately(update: Update, context: CallbackContext, user: User):
+    if not db.check_if_user_exists(user.id):
+        db.add_new_user(
+            user.id,
+            update.message.chat_id,
+            username=user.username,
+            first_name=user.first_name,
+            last_name= user.last_name
+        )
+        db.set_user_attribute(user.id, "last_interaction", datetime.now())
 
 async def start_handle(update: Update, context: CallbackContext):
     await register_user_if_not_exists(update, context, update.message.from_user)
     user_id = update.message.from_user.id
+    message = update.message.text
     
     db.set_user_attribute(user_id, "last_interaction", datetime.now())
     db.start_new_dialog(user_id)
@@ -82,9 +94,26 @@ async def retry_handle(update: Update, context: CallbackContext):
 
     await message_handle(update, context, message=last_dialog_message["user"], use_new_dialog_timeout=False)
 
+async def question_handle(update: Update, context: CallbackContext):
+    user_id = update.message.from_user.id
+    await register_user_immediately(update, context, update.message.from_user)
+    if (datetime.now() - db.get_user_attribute(user_id, "last_interaction")).seconds > config.new_dialog_timeout:
+        db.start_new_dialog(user_id)
+    
+    try:
+        dialog_id = db.get_user_attribute(user_id, "current_dialog_id")
+    except Exception as e:
+        print("need start new dialog")
+        db.start_new_dialog(user_id)
+    
+    # send typing action
+    message = update.message.text.replace("/ask", "")
+    print(message)
+    await message_handle(update, context, message, False)
 
 async def message_handle(update: Update, context: CallbackContext, message=None, use_new_dialog_timeout=True):
     # check if message is edited
+    print(update)
     if update.edited_message is not None:
         await edited_message_handle(update, context)
         return
@@ -243,6 +272,7 @@ def run_bot() -> None:
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & user_filter, message_handle))
     application.add_handler(CommandHandler("retry", retry_handle, filters=user_filter))
     application.add_handler(CommandHandler("new", new_dialog_handle, filters=user_filter))
+    application.add_handler(CommandHandler("ask", question_handle, filters=user_filter))
     
     application.add_handler(CommandHandler("mode", show_chat_modes_handle, filters=user_filter))
     application.add_handler(CallbackQueryHandler(set_chat_mode_handle, pattern="^set_chat_mode"))
